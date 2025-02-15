@@ -47,6 +47,13 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # 新步骤: 登录到 DockerHub
+      # - name: 登录到 DockerHub
+      #   uses: docker/login-action@v2
+      #   with:
+      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       # 步骤6: 构建并推送 Docker 镜像到 GitHub Container Registry 和 DockerHub
       - name: 构建并推送
         uses: docker/build-push-action@v3
