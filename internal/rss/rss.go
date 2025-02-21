@@ -208,26 +208,19 @@ func (m *Manager) matchKeywords(item *gofeed.Item, feed *Feed) []string {
         return []string{"无关键词"}
     }
 
-    log.Printf("正在匹配标题: %s", item.Title)
-    log.Printf("文章描述: %s", item.Description)
-    
     // 标准化文本
     normalizedTitle := normalizeText(item.Title)
     normalizedDesc := normalizeText(item.Description)
     
-    log.Printf("标准化后的标题: %s", normalizedTitle)
-    log.Printf("标准化后的描述: %s", normalizedDesc)
-    log.Printf("部分匹配设置: %s", map[bool]string{true: "允许", false: "禁用"}[feed.AllowPartMatch])
-    
     var matched []string
+    
+    // 检查每个关键词
     for _, keyword := range feed.Keywords {
         // 标准化关键词
         normalizedKeyword := normalizeText(keyword)
-        log.Printf("检查关键词: %s (标准化后: %s)", keyword, normalizedKeyword)
         
         // 首先尝试完整词匹配
         if isWordMatch(normalizedTitle, normalizedKeyword) {
-            log.Printf("在标题中找到完整词匹配: %s", keyword)
             if !contains(matched, keyword) {
                 matched = append(matched, keyword)
             }
@@ -235,7 +228,6 @@ func (m *Manager) matchKeywords(item *gofeed.Item, feed *Feed) []string {
         }
         
         if isWordMatch(normalizedDesc, normalizedKeyword) {
-            log.Printf("在描述中找到完整词匹配: %s", keyword)
             if !contains(matched, keyword) {
                 matched = append(matched, keyword)
             }
@@ -245,27 +237,34 @@ func (m *Manager) matchKeywords(item *gofeed.Item, feed *Feed) []string {
         // 如果允许部分匹配且没有找到完整匹配，尝试部分匹配
         if feed.AllowPartMatch {
             if strings.Contains(normalizedTitle, normalizedKeyword) {
-                log.Printf("在标题中找到部分匹配: %s", keyword)
                 if !contains(matched, keyword) {
                     matched = append(matched, keyword)
                 }
             } else if strings.Contains(normalizedDesc, normalizedKeyword) {
-                log.Printf("在描述中找到部分匹配: %s", keyword)
                 if !contains(matched, keyword) {
                     matched = append(matched, keyword)
                 }
-            } else {
-                log.Printf("未找到关键词 %s 的匹配", keyword)
             }
-        } else {
-            log.Printf("未找到关键词 %s 的完整词匹配（当前设置: 仅允许完整匹配）", keyword)
         }
     }
 
+    // 根据是否匹配到关键词来决定日志输出级别
     if len(matched) > 0 {
-        log.Printf("最终匹配到的关键词: %v", matched)
+        // 如果匹配到关键词，输出详细日志
+        log.Printf("📝 发现匹配文章:\n"+
+            "   标题: %s\n"+
+            "   描述: %s\n"+
+            "   链接: %s\n"+
+            "   部分匹配: %s\n"+
+            "✨ 匹配关键词: %v",
+            item.Title,
+            item.Description,
+            item.Link,
+            map[bool]string{true: "允许", false: "禁用"}[feed.AllowPartMatch],
+            matched)
     } else {
-        log.Printf("没有匹配到任何关键词")
+        // 如果未匹配到关键词，只输出简单的监听状态
+        log.Printf("👀 监听RSS: %s, 标题: %s", feed.URLs[0], item.Title)
     }
 
     return matched

@@ -73,8 +73,9 @@ func (b *Bot) Start() {
     commands := []tgbotapi.BotCommand{
         {Command: "start", Description: "开始/帮助"},
         {Command: "view", Description: "查看类命令"},
+        {Command: "users", Description: "用户管理命令"},
         {Command: "edit", Description: "编辑类命令"},
-        {Command: "stats", Description: "推送统计"},
+    //    {Command: "stats", Description: "推送统计"},
     }
     
     setMyCommandsConfig := tgbotapi.NewSetMyCommands(commands...)
@@ -113,6 +114,12 @@ func (b *Bot) Start() {
                 b.handleAddAll(chatID, userID)
             case "del_all":
                 b.handleDelAll(chatID, userID)
+            case "add_user":
+                b.handleAddUser(chatID, userID)
+            case "del_user":
+                b.handleDelUser(chatID, userID)
+            case "list_users":
+                b.handleListUsers(chatID)
             }
             
             // 回应按钮点击
@@ -151,6 +158,8 @@ func (b *Bot) Start() {
                 b.handleAdd(chatID, userID)
             case "delete":
                 b.handleDelete(chatID, userID)
+            case "users":
+                b.handleUsers(chatID, userID)
             default:
                 b.sendMessage(chatID, "未知命令，请使用 /start 查看可用命令。")
             }
@@ -162,9 +171,10 @@ func (b *Bot) Start() {
 
 // escapeMarkdownV2Text 转义普通文本中的特殊字符
 func escapeMarkdownV2Text(text string) string {
-    // 按照 Telegram MarkdownV2 格式要求转义特殊字符
-    // 参考: https://core.telegram.org/bots/api#markdownv2-style
-    text = strings.ReplaceAll(text, "\\", "\\\\") // 必须首先转义反斜杠
+    // 首先转义反斜杠，这样不会影响后续的转义
+    text = strings.ReplaceAll(text, "\\", "\\\\")
+
+    // 其他特殊字符的转义
     text = strings.ReplaceAll(text, "_", "\\_")
     text = strings.ReplaceAll(text, "*", "\\*")
     text = strings.ReplaceAll(text, "[", "\\[")
@@ -183,6 +193,7 @@ func escapeMarkdownV2Text(text string) string {
     text = strings.ReplaceAll(text, "}", "\\}")
     text = strings.ReplaceAll(text, ".", "\\.")
     text = strings.ReplaceAll(text, "!", "\\!")
+
     return text
 }
 
@@ -191,6 +202,7 @@ func formatBoldText(text string) string {
     if text == "" {
         return "*无*"
     }
+    // 先转义特殊字符，再添加加粗标记
     return "*" + escapeMarkdownV2Text(text) + "*"
 }
 
@@ -202,32 +214,24 @@ func (b *Bot) SendMessage(title, url, group string, pubDate time.Time, matchedKe
     formattedTitle := formatBoldText(title)
     
     // 处理URL（转义所有特殊字符）
-    formattedURL := url
-    formattedURL = strings.ReplaceAll(formattedURL, "\\", "\\\\")
-    formattedURL = strings.ReplaceAll(formattedURL, ".", "\\.")
-    formattedURL = strings.ReplaceAll(formattedURL, "(", "\\(")
-    formattedURL = strings.ReplaceAll(formattedURL, ")", "\\)")
-    formattedURL = strings.ReplaceAll(formattedURL, "!", "\\!")
-    formattedURL = strings.ReplaceAll(formattedURL, "-", "\\-")
-    formattedURL = strings.ReplaceAll(formattedURL, "_", "\\_")
+    formattedURL := escapeMarkdownV2Text(url)
     
     // 处理关键词（加粗并添加#）
     formattedKeywords := make([]string, len(matchedKeywords))
     for i, keyword := range matchedKeywords {
-        formattedKeywords[i] = "\\#" + formatBoldText(keyword)
+        // 先转义关键词，再添加#和加粗
+        escapedKeyword := escapeMarkdownV2Text(keyword)
+        formattedKeywords[i] = "\\#*" + escapedKeyword + "*"
     }
     
     // 处理分组（加粗）
     formattedGroup := formatBoldText(group)
     
-    // 处理时间（加粗，需要转义所有特殊字符）
+    // 处理时间（加粗）
     timeStr := pubDateChina.Format("2006-01-02 15:04:05")
-    timeStr = strings.ReplaceAll(timeStr, "-", "\\-")
-    timeStr = strings.ReplaceAll(timeStr, ":", "\\:")
-    timeStr = strings.ReplaceAll(timeStr, ".", "\\.")
-    formattedTime := "*" + timeStr + "*"
+    formattedTime := formatBoldText(timeStr)
     
-    // 构建消息文本（标签文本也需要加粗）
+    // 构建消息文本
     text := fmt.Sprintf("%s\n\n🌐 *链接:* %s\n\n🔍 *关键词:* %s\n\n🏷️ *分组:* %s\n\n🕒 *时间:* %s", 
         formattedTitle,
         formattedURL,
@@ -276,20 +280,25 @@ func (b *Bot) handleStart(chatID int64) {
     helpText := "欢迎使用RSS订阅机器人！\n\n" +
         "主要命令：\n" +
         "/start \\- 开始使用机器人并查看帮助信息\n" +
-        "/stats \\- 查看推送统计\n" +
         "/view \\- 查看类命令合集\n" +
-        "/edit \\- 编辑类命令合集\n\n" +
+        "/users \\- 用户管理命令合集\n" +
+        "/edit \\- 编辑类命令合集\n" +
+        "/stats \\- 查看推送统计\n\n" +
         "查看类命令（使用 /view 查看）：\n" +
         "/config \\- 查看当前配置\n" +
         "/list \\- 列出所有RSS订阅\n" +
         "/stats \\- 查看推送统计\n" +
         "/version \\- 获取当前版本信息\n\n" +
+        "用户管理命令（使用 /users 查看）：\n" +
+        "/add\\_user \\- 添加用户\n" +
+        "/del\\_user \\- 删除用户\n" +
+        "/list\\_users \\- 查看用户列表\n\n" +
         "编辑类命令（使用 /edit 查看）：\n" +
         "/add \\- 添加RSS订阅\n" +
         "/edit \\- 编辑RSS订阅\n" +
         "/delete \\- 删除RSS订阅\n" +
-        "/add_all \\- 向所有订阅添加关键词\n" +
-        "/del_all \\- 从所有订阅删除关键词"
+        "/add\\_all \\- 向所有订阅添加关键词\n" +
+        "/del\\_all \\- 从所有订阅删除关键词"
     
     // 转义特殊字符，但保持命令格式
     helpText = strings.ReplaceAll(helpText, "!", "\\!")
@@ -371,6 +380,10 @@ func (b *Bot) handleConfig(chatID int64) {
 }
 
 func (b *Bot) handleAdd(chatID int64, userID int64) {
+    if !b.isAdmin(userID) {
+        b.sendMessage(chatID, "您不是系统管理员，无法操作")
+        return
+    }
     b.userState[userID] = "add_url"
     message := b.listSubscriptions()
     message += "\n请输入要添加的RSS订阅URL（如需添加多个URL，请用英文逗号分隔）："
@@ -383,6 +396,10 @@ func (b *Bot) handleAdd(chatID int64, userID int64) {
 }
 
 func (b *Bot) handleEdit(chatID int64, userID int64) {
+    if !b.isAdmin(userID) {
+        b.sendMessage(chatID, "您不是系统管理员，无法操作")
+        return
+    }
     b.userState[userID] = "edit_index"
     message := b.listSubscriptions()
     message += "\n请输入要编辑的RSS订阅编号："
@@ -395,6 +412,10 @@ func (b *Bot) handleEdit(chatID int64, userID int64) {
 }
 
 func (b *Bot) handleDelete(chatID int64, userID int64) {
+    if !b.isAdmin(userID) {
+        b.sendMessage(chatID, "您不是系统管理员，无法操作")
+        return
+    }
     b.userState[userID] = "delete"
     message := b.listSubscriptions()
     message += "\n请输入要删除的RSS订阅编号："
@@ -425,7 +446,14 @@ func (b *Bot) handleList(chatID int64) {
 }
 
 func (b *Bot) handleStats(chatID int64) {
-    b.sendMessage(chatID, b.getStats())
+    // 创建新的消息
+    msg := tgbotapi.NewMessage(chatID, b.getStats())
+    msg.ParseMode = "MarkdownV2"  // 设置解析模式为 MarkdownV2
+    
+    // 发送消息
+    if _, err := b.api.Send(msg); err != nil {
+        log.Printf("发送统计信息失败: %v", err)
+    }
 }
 
 func (b *Bot) handleUserInput(message *tgbotapi.Message) {
@@ -695,6 +723,59 @@ func (b *Bot) handleUserInput(message *tgbotapi.Message) {
                 b.updateRSSHandler()
             }
         }
+    case "add_user":
+        userIDs := strings.Fields(text)
+        newUsers := make([]int64, 0)
+        for _, userIDStr := range userIDs {
+            userID, err := strconv.ParseInt(userIDStr, 10, 64)
+            if err != nil {
+                b.sendMessage(chatID, fmt.Sprintf("无效的用户ID: %s", userIDStr))
+                continue
+            }
+            if !contains(b.users, userID) {
+                newUsers = append(newUsers, userID)
+            }
+        }
+        
+        if len(newUsers) > 0 {
+            b.users = append(b.users, newUsers...)
+            // 更新配置文件
+            b.config.Telegram.Users = make([]string, len(b.users))
+            for i, uid := range b.users {
+                b.config.Telegram.Users[i] = strconv.FormatInt(uid, 10)
+            }
+            if err := b.config.Save(b.configFile); err != nil {
+                b.sendMessage(chatID, "添加用户成功，但保存配置失败")
+            } else {
+                b.sendMessage(chatID, fmt.Sprintf("成功添加 %d 个用户", len(newUsers)))
+            }
+        } else {
+            b.sendMessage(chatID, "未添加任何新用户")
+        }
+        delete(b.userState, userID)
+    case "del_user":
+        index, err := strconv.Atoi(text)
+        if err != nil || index < 1 || index > len(b.users) {
+            b.sendMessage(chatID, "无效的用户编号")
+            delete(b.userState, userID)
+            return
+        }
+        
+        deletedUser := b.users[index-1]
+        b.users = append(b.users[:index-1], b.users[index:]...)
+        
+        // 更新配置文件
+        b.config.Telegram.Users = make([]string, len(b.users))
+        for i, uid := range b.users {
+            b.config.Telegram.Users[i] = strconv.FormatInt(uid, 10)
+        }
+        
+        if err := b.config.Save(b.configFile); err != nil {
+            b.sendMessage(chatID, "删除用户成功，但保存配置失败")
+        } else {
+            b.sendMessage(chatID, fmt.Sprintf("成功删除用户: %d", deletedUser))
+        }
+        delete(b.userState, userID)
     }
 }
 
@@ -773,9 +854,23 @@ func (b *Bot) handleVersion(chatID int64) {
         return
     }
 
-    // 发送版本信息
-    message := fmt.Sprintf("当前版本：%s\n最新版本：%s", currentVersion, latestVersion)
-    b.sendMessage(chatID, message)
+    // 构建版本信息消息
+    message := fmt.Sprintf("🤖 *RSS2TG 机器人*\n\n"+
+        "当前版本：%s\n"+
+        "最新版本：%s\n\n"+
+        "©️ 版权所有 2025 drfyup\n"+
+        "🌐 官方网站：[GitHub](%s)\n"+
+        "📖 官方文档：`%s` \\(点击复制\\)",
+        escapeMarkdownV2Text(currentVersion),
+        escapeMarkdownV2Text(latestVersion),
+        "https://github\\.com/3377/rss2tg",
+        "https://3377\\.github\\.io/rss2tg")  // 转义点号
+
+    msg := tgbotapi.NewMessage(chatID, message)
+    msg.ParseMode = "MarkdownV2"
+    if _, err := b.api.Send(msg); err != nil {
+        log.Printf("发送版本信息失败: %v", err)
+    }
 }
 
 func (b *Bot) getCurrentVersion() (string, error) {
@@ -808,11 +903,19 @@ func (b *Bot) getLatestVersion() (string, error) {
 }
 
 func (b *Bot) handleAddAll(chatID int64, userID int64) {
+    if !b.isAdmin(userID) {
+        b.sendMessage(chatID, "您不是系统管理员，无法操作")
+        return
+    }
     b.userState[userID] = "add_all_keywords"
     b.sendMessage(chatID, "请输入要添加到所有订阅的关键词（用空格分隔）：")
 }
 
 func (b *Bot) handleDelAll(chatID int64, userID int64) {
+    if !b.isAdmin(userID) {
+        b.sendMessage(chatID, "您不是系统管理员，无法操作")
+        return
+    }
     b.userState[userID] = "del_all_keywords"
     b.sendMessage(chatID, "请输入要从所有订阅中删除的关键词（用空格分隔）：")
 }
@@ -835,4 +938,83 @@ func (b *Bot) getPartMatchStatus(allowPartMatch bool) string {
         return "允许"
     }
     return "禁用"
+}
+
+func (b *Bot) handleUsers(chatID int64, userID int64) {
+    text := "用户管理命令列表："
+    
+    // 创建按钮列表
+    keyboard := tgbotapi.NewInlineKeyboardMarkup(
+        tgbotapi.NewInlineKeyboardRow(
+            tgbotapi.NewInlineKeyboardButtonData("➕ 添加用户", "add_user"),
+            tgbotapi.NewInlineKeyboardButtonData("❌ 删除用户", "del_user"),
+        ),
+        tgbotapi.NewInlineKeyboardRow(
+            tgbotapi.NewInlineKeyboardButtonData("📋 查看用户列表", "list_users"),
+        ),
+    )
+
+    msg := tgbotapi.NewMessage(chatID, escapeMarkdownV2Text(text))
+    msg.ParseMode = "MarkdownV2"
+    msg.ReplyMarkup = keyboard
+    if _, err := b.api.Send(msg); err != nil {
+        log.Printf("发送消息失败: %v", err)
+    }
+}
+
+func (b *Bot) handleAddUser(chatID int64, userID int64) {
+    if !b.isAdmin(userID) {
+        b.sendMessage(chatID, "您不是系统管理员，无法操作")
+        return
+    }
+    b.userState[userID] = "add_user"
+    b.sendMessage(chatID, "请输入要添加的用户ID（多个用户ID请用空格分隔）：")
+}
+
+func (b *Bot) handleDelUser(chatID int64, userID int64) {
+    if !b.isAdmin(userID) {
+        b.sendMessage(chatID, "您不是系统管理员，无法操作")
+        return
+    }
+    b.userState[userID] = "del_user"
+    userList := "当前用户列表:\n"
+    for i, uid := range b.users {
+        userList += fmt.Sprintf("%d. %d\n", i+1, uid)
+    }
+    userList += "\n请输入要删除的用户编号："
+    b.sendMessage(chatID, userList)
+}
+
+func (b *Bot) handleListUsers(chatID int64) {
+    userList := "当前用户列表:\n"
+    for i, uid := range b.users {
+        userList += fmt.Sprintf("%d. %d\n", i+1, uid)
+    }
+    b.sendMessage(chatID, userList)
+}
+
+// 添加管理员检查函数
+func (b *Bot) isAdmin(userID int64) bool {
+    // 如果没有配置管理员，则所有用户都是管理员
+    if len(b.config.Telegram.AdminUsers) == 0 {
+        return contains(b.users, userID)
+    }
+    // 检查用户是否在管理员列表中
+    for _, adminStr := range b.config.Telegram.AdminUsers {
+        adminID, err := strconv.ParseInt(adminStr, 10, 64)
+        if err == nil && adminID == userID {
+            return true
+        }
+    }
+    return false
+}
+
+// 添加 contains 辅助函数
+func contains(slice []int64, item int64) bool {
+    for _, v := range slice {
+        if v == item {
+            return true
+        }
+    }
+    return false
 }
