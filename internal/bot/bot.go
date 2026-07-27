@@ -94,6 +94,12 @@ func (b *Bot) Start() {
             // 处理按钮点击
             chatID := update.CallbackQuery.Message.Chat.ID
             userID := update.CallbackQuery.From.ID
+
+            // Acknowledge the button tap before slower work like config reloads or network checks.
+            callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
+            if _, err := b.api.Request(callback); err != nil {
+                log.Printf("回应按钮点击失败: %v", err)
+            }
             
             switch update.CallbackQuery.Data {
             case "config":
@@ -120,12 +126,6 @@ func (b *Bot) Start() {
                 b.handleDelUser(chatID, userID)
             case "list_users":
                 b.handleListUsers(chatID)
-            }
-            
-            // 回应按钮点击
-            callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
-            if _, err := b.api.Request(callback); err != nil {
-                log.Printf("回应按钮点击失败: %v", err)
             }
             
             continue
@@ -363,12 +363,7 @@ func (b *Bot) handleEditCommand(chatID int64, userID int64) {
 
 func (b *Bot) handleConfig(chatID int64) {
     log.Printf("正在处理查看配置请求，chatID: %d", chatID)
-    if err := b.reloadConfig(); err != nil {
-        log.Printf("加载配置失败: %v", err)
-        b.sendMessage(chatID, fmt.Sprintf("加载配置时出错：%v\n请检查配置文件格式是否正确。", err))
-        return
-    }
-    
+
     config := b.getConfig()
     if config == "" {
         b.sendMessage(chatID, "当前没有配置信息或配置为空")
@@ -429,12 +424,7 @@ func (b *Bot) handleDelete(chatID int64, userID int64) {
 
 func (b *Bot) handleList(chatID int64) {
     log.Printf("正在处理列表请求，chatID: %d", chatID)
-    if err := b.reloadConfig(); err != nil {
-        log.Printf("加载配置失败: %v", err)
-        b.sendMessage(chatID, fmt.Sprintf("加载配置时出错：%v\n请检查配置文件格式是否正确。", err))
-        return
-    }
-    
+
     list := b.listSubscriptions()
     if list == "" {
         b.sendMessage(chatID, "当前没有RSS订阅")
@@ -946,7 +936,8 @@ func (b *Bot) getCurrentVersion() (string, error) {
 
 func (b *Bot) getLatestVersion() (string, error) {
     // 直接从远程获取最新版本
-    resp, err := http.Get("https://raw.githubusercontent.com/twamix/rss2tg/refs/heads/main/version")
+    client := &http.Client{Timeout: 5 * time.Second}
+    resp, err := client.Get("https://raw.githubusercontent.com/twamix/rss2tg/refs/heads/main/version")
     if err != nil {
         return "", fmt.Errorf("无法获取最新版本: %v", err)
     }
