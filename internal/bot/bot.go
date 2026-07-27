@@ -363,6 +363,11 @@ func (b *Bot) handleEditCommand(chatID int64, userID int64) {
 
 func (b *Bot) handleConfig(chatID int64) {
     log.Printf("正在处理查看配置请求，chatID: %d", chatID)
+    if err := b.reloadConfig(); err != nil {
+        log.Printf("加载配置失败: %v", err)
+        b.sendMessage(chatID, fmt.Sprintf("加载配置时出错：%v\n请检查配置文件格式是否正确。", err))
+        return
+    }
 
     config := b.getConfig()
     if config == "" {
@@ -377,6 +382,11 @@ func (b *Bot) handleConfig(chatID int64) {
 func (b *Bot) handleAdd(chatID int64, userID int64) {
     if !b.isAdmin(userID) {
         b.sendMessage(chatID, "您不是系统管理员，无法操作")
+        return
+    }
+    if err := b.reloadConfig(); err != nil {
+        log.Printf("加载配置失败: %v", err)
+        b.sendMessage(chatID, fmt.Sprintf("加载配置时出错：%v\n请检查配置文件格式是否正确。", err))
         return
     }
     b.userState[userID] = "add_url"
@@ -395,6 +405,11 @@ func (b *Bot) handleEdit(chatID int64, userID int64) {
         b.sendMessage(chatID, "您不是系统管理员，无法操作")
         return
     }
+    if err := b.reloadConfig(); err != nil {
+        log.Printf("加载配置失败: %v", err)
+        b.sendMessage(chatID, fmt.Sprintf("加载配置时出错：%v\n请检查配置文件格式是否正确。", err))
+        return
+    }
     b.userState[userID] = "edit_index"
     message := b.listSubscriptions()
     message += "\n请输入要编辑的RSS订阅编号："
@@ -411,6 +426,11 @@ func (b *Bot) handleDelete(chatID int64, userID int64) {
         b.sendMessage(chatID, "您不是系统管理员，无法操作")
         return
     }
+    if err := b.reloadConfig(); err != nil {
+        log.Printf("加载配置失败: %v", err)
+        b.sendMessage(chatID, fmt.Sprintf("加载配置时出错：%v\n请检查配置文件格式是否正确。", err))
+        return
+    }
     b.userState[userID] = "delete"
     message := b.listSubscriptions()
     message += "\n请输入要删除的RSS订阅编号："
@@ -424,6 +444,11 @@ func (b *Bot) handleDelete(chatID int64, userID int64) {
 
 func (b *Bot) handleList(chatID int64) {
     log.Printf("正在处理列表请求，chatID: %d", chatID)
+    if err := b.reloadConfig(); err != nil {
+        log.Printf("加载配置失败: %v", err)
+        b.sendMessage(chatID, fmt.Sprintf("加载配置时出错：%v\n请检查配置文件格式是否正确。", err))
+        return
+    }
 
     list := b.listSubscriptions()
     if list == "" {
