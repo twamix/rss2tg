@@ -21,7 +21,7 @@
 2. 克隆或下载项目代码到本地。
 
 ```bash
-git clone https://github.com/3377/rss2tg.git
+git clone https://github.com/twamix/rss2tg.git
 ```
 
 3. 进入项目目录。
@@ -35,7 +35,7 @@ version: "3"
 services:
   rss2tg:
     container_name: rss2tg
-    image: drfyup/rss2tg:latest
+    image: ghcr.io/twamix/rss2tg:latest
     volumes:
       - ./config/config.yaml:/app/config/config.yaml
       - ./data:/app/data
@@ -60,7 +60,7 @@ docker-compose up  -d
 1. 构建 Docker 镜像：
 
 ```yaml
-docker pull drfyup/rss2tg:latest
+docker pull ghcr.io/twamix/rss2tg:latest
 ```
 
 2. 运行 Docker 容器：
@@ -75,7 +75,7 @@ docker run -d \
 -e TELEGRAM_CHANNELS=@channel_1,@channel_2 \
 -e TZ=Asia/Shanghai \
 --restart unless-stopped \
-drfyup/rss2tg:latest
+ghcr.io/twamix/rss2tg:latest
 ```
 
 请替换环境变量中的相应值。
@@ -380,7 +380,7 @@ docker logs rss2tg
 2. Clone or download the project code locally.
 
 ```bash
-git clone https://github.com/3377/rss2tg.git
+git clone https://github.com/twamix/rss2tg.git
 ```
 
 3. Enter the project directory.
@@ -394,7 +394,7 @@ version: "3"
 services:
   rss2tg:
     container_name: rss2tg
-    image: drfyup/rss2tg:latest
+    image: ghcr.io/twamix/rss2tg:latest
     volumes:
       - ./config:/app/config
       - ./data:/app/data
@@ -419,7 +419,7 @@ docker-compose up  -d
 1. Build a Docker image：
 
 ```yaml
-docker pull drfyup/rss2tg:latest
+docker pull ghcr.io/twamix/rss2tg:latest
 ```
 
 2. Run the Docker container：
@@ -434,7 +434,7 @@ docker run -d \
 -e TELEGRAM_CHANNELS=@channel_1,@channel_2 \
 -e TZ=Asia/Shanghai \
 --restart unless-stopped \
-drfyup/rss2tg:latest
+ghcr.io/twamix/rss2tg:latest
 ```
 
 Please replace the corresponding value in the environment variable.

@@ -2,7 +2,7 @@ version: '3'
 services:
   rss2tg:
     container_name: rss2tg
-    image: drfyup/rss2tg:latest
+    image: ghcr.io/twamix/rss2tg:latest
     volumes:
       - ./config/config.yaml:/app/config/config.yaml
       - ./data:/app/data

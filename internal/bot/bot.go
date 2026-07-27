@@ -925,8 +925,8 @@ func (b *Bot) handleVersion(chatID int64) {
         "📖 官方文档：`%s` \\(点击复制\\)",
         escapeMarkdownV2Text(currentVersion),
         escapeMarkdownV2Text(latestVersion),
-        "https://github\\.com/3377/rss2tg",
-        "https://3377\\.github\\.io/rss2tg")  // 转义点号
+        "https://github\\.com/twamix/rss2tg",
+        "https://github\\.com/twamix/rss2tg")  // 转义点号
 
     msg := tgbotapi.NewMessage(chatID, message)
     msg.ParseMode = "MarkdownV2"
@@ -946,7 +946,7 @@ func (b *Bot) getCurrentVersion() (string, error) {
 
 func (b *Bot) getLatestVersion() (string, error) {
     // 直接从远程获取最新版本
-    resp, err := http.Get("https://raw.githubusercontent.com/3377/rss2tg/refs/heads/main/version")
+    resp, err := http.Get("https://raw.githubusercontent.com/twamix/rss2tg/refs/heads/main/version")
     if err != nil {
         return "", fmt.Errorf("无法获取最新版本: %v", err)
     }
