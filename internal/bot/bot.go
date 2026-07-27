@@ -508,6 +508,7 @@ func (b *Bot) handleUserInput(message *tgbotapi.Message) {
         b.config.RSS = append(b.config.RSS, config.RSSEntry{
             URLs:           cleanURLs,
             AllowPartMatch: true,  // 默认允许部分匹配
+            MatchScope:     config.MatchScopeAll,
         })
         b.sendMessage(chatID, "请输入订阅的更新间隔（秒）：")
     case "add_interval":
@@ -539,6 +540,20 @@ func (b *Bot) handleUserInput(message *tgbotapi.Message) {
                 keywords := strings.Fields(text)
                 b.config.RSS[lastIndex].Keywords = keywords
             }
+            b.userState[userID] = "add_exclude_keywords"
+            b.sendMessage(chatID, "请输入排除关键词（用空格分隔）：\n1: 不设置排除关键词\n或直接输入要排除的关键词")
+        } else {
+            b.sendMessage(chatID, "添加订阅失败：找不到要编辑的订阅")
+            delete(b.userState, userID)
+        }
+    case "add_exclude_keywords":
+        lastIndex := len(b.config.RSS) - 1
+        if lastIndex >= 0 {
+            if text == "1" {
+                b.config.RSS[lastIndex].ExcludeKeywords = []string{}
+            } else {
+                b.config.RSS[lastIndex].ExcludeKeywords = strings.Fields(text)
+            }
             b.userState[userID] = "add_group"
             b.sendMessage(chatID, "请输入组名：")
         } else {
@@ -567,6 +582,21 @@ func (b *Bot) handleUserInput(message *tgbotapi.Message) {
                 b.sendMessage(chatID, "无效的选项，请输入1或2：")
                 return
             }
+            b.userState[userID] = "add_match_scope"
+            b.sendMessage(chatID, "请选择关键词匹配范围：\n1: 只匹配标题\n2: 只匹配内容\n3: 匹配标题和内容\n请输入选项编号(1-3)：")
+        } else {
+            b.sendMessage(chatID, "添加订阅失败：找不到要编辑的订阅")
+            delete(b.userState, userID)
+        }
+    case "add_match_scope":
+        lastIndex := len(b.config.RSS) - 1
+        if lastIndex >= 0 {
+            matchScope, ok := parseMatchScopeOption(text)
+            if !ok {
+                b.sendMessage(chatID, "无效的选项，请输入1-3。")
+                return
+            }
+            b.config.RSS[lastIndex].MatchScope = matchScope
             delete(b.userState, userID)
             if err := b.config.Save(b.configFile); err != nil {
                 b.sendMessage(chatID, "添加订阅成功，但保存配置失败。")
@@ -706,6 +736,18 @@ func (b *Bot) handleUserInput(message *tgbotapi.Message) {
                 keywords := strings.Fields(text)
                 b.config.RSS[index].Keywords = keywords
             }
+            b.userState[userID] = fmt.Sprintf("edit_exclude_keywords_%d", index)
+            b.sendMessage(chatID, fmt.Sprintf("当前排除关键词为：%v\n请输入新的排除关键词（用空格分隔）：\n1: 保持原有排除关键词\n2: 不设置排除关键词\n或直接输入新的排除关键词", b.config.RSS[index].ExcludeKeywords))
+        } else if strings.HasPrefix(b.userState[userID], "edit_exclude_keywords_") {
+            index, _ := strconv.Atoi(strings.TrimPrefix(b.userState[userID], "edit_exclude_keywords_"))
+            switch text {
+            case "1":
+                // 保持原有排除关键词，不做任何修改
+            case "2":
+                b.config.RSS[index].ExcludeKeywords = []string{}
+            default:
+                b.config.RSS[index].ExcludeKeywords = strings.Fields(text)
+            }
             b.userState[userID] = fmt.Sprintf("edit_group_%d", index)
             b.sendMessage(chatID, fmt.Sprintf("当前组名为：%s\n请输入新的组名（如不修改请输入1）：", b.config.RSS[index].Group))
         } else if strings.HasPrefix(b.userState[userID], "edit_group_") {
@@ -728,6 +770,18 @@ func (b *Bot) handleUserInput(message *tgbotapi.Message) {
             default:
                 b.sendMessage(chatID, "无效的选项，请输入1-3：")
                 return
+            }
+            b.userState[userID] = fmt.Sprintf("edit_match_scope_%d", index)
+            b.sendMessage(chatID, fmt.Sprintf("当前关键词匹配范围：%s\n请选择新的匹配范围：\n1: 只匹配标题\n2: 只匹配内容\n3: 匹配标题和内容\n4: 保持不变\n请输入选项编号(1-4)：", b.getMatchScopeStatus(b.config.RSS[index].MatchScope)))
+        } else if strings.HasPrefix(b.userState[userID], "edit_match_scope_") {
+            index, _ := strconv.Atoi(strings.TrimPrefix(b.userState[userID], "edit_match_scope_"))
+            if text != "4" {
+                matchScope, ok := parseMatchScopeOption(text)
+                if !ok {
+                    b.sendMessage(chatID, "无效的选项，请输入1-4。")
+                    return
+                }
+                b.config.RSS[index].MatchScope = matchScope
             }
             delete(b.userState, userID)
             if err := b.config.Save(b.configFile); err != nil {
@@ -794,53 +848,47 @@ func (b *Bot) handleUserInput(message *tgbotapi.Message) {
 }
 
 func (b *Bot) getConfig() string {
-    config := "当前配置信息：\n"
-    config += fmt.Sprintf("用户: %v\n", b.users)
-    config += fmt.Sprintf("频道: %v\n", b.channels)
-    config += "RSS订阅:\n"
+    result := "当前配置信息：\n"
+    result += fmt.Sprintf("用户: %v\n", b.users)
+    result += fmt.Sprintf("频道: %v\n", b.channels)
+    result += "RSS订阅:\n"
     for i, rss := range b.config.RSS {
-        config += fmt.Sprintf("%d. 📡 URLs:\n", i+1)
+        result += fmt.Sprintf("%d. URLs:\n", i+1)
         for j, url := range rss.URLs {
-            config += fmt.Sprintf("   %d) %s\n", j+1, url)  // 直接显示URL，不进行转义
+            result += fmt.Sprintf("   %d) %s\n", j+1, url)
         }
         keywords := strings.Join(rss.Keywords, ", ")
-        
-        // 先转义特殊字符，再添加加粗标记
-        escapedKeywords := escapeMarkdownV2Text(keywords)
-        escapedGroup := escapeMarkdownV2Text(rss.Group)
-        
-        config += fmt.Sprintf("   ⏱️ 间隔: %d秒\n   🔑 关键词: %s\n   🏷️ 组名: %s\n   🔍 部分匹配: %s\n", 
-            rss.Interval, 
-            escapedKeywords,
-            escapedGroup,
-            escapeMarkdownV2Text(b.getPartMatchStatus(rss.AllowPartMatch)))
+        excludeKeywords := strings.Join(rss.ExcludeKeywords, ", ")
+        result += fmt.Sprintf("   间隔: %d秒\n   关键词: %s\n   排除关键词: %s\n   组名: %s\n   部分匹配: %s\n   匹配范围: %s\n",
+            rss.Interval,
+            keywords,
+            excludeKeywords,
+            rss.Group,
+            b.getPartMatchStatus(rss.AllowPartMatch),
+            b.getMatchScopeStatus(rss.MatchScope))
     }
-    return config
+    return result
 }
 
 func (b *Bot) listSubscriptions() string {
-    list := "当前RSS订阅列表:\n"
+    result := "当前RSS订阅列表:\n"
     for i, rss := range b.config.RSS {
-        list += fmt.Sprintf("%d. 📡 URLs:\n", i+1)
+        result += fmt.Sprintf("%d. URLs:\n", i+1)
         for j, url := range rss.URLs {
-            list += fmt.Sprintf("   %d) %s\n", j+1, url)  // 直接显示URL，不进行转义
+            result += fmt.Sprintf("   %d) %s\n", j+1, url)
         }
-        // 处理关键词列表
         keywords := strings.Join(rss.Keywords, ", ")
-        
-        // 先转义特殊字符，再添加加粗标记
-        escapedKeywords := escapeMarkdownV2Text(keywords)
-        escapedGroup := escapeMarkdownV2Text(rss.Group)
-        
-        list += fmt.Sprintf("   ⏱️ 间隔: %d秒\n   🔑 关键词: %s\n   🏷️ 组名: %s\n   🔍 部分匹配: %s\n", 
-            rss.Interval, 
-            escapedKeywords,
-            escapedGroup,
-            escapeMarkdownV2Text(b.getPartMatchStatus(rss.AllowPartMatch)))
+        excludeKeywords := strings.Join(rss.ExcludeKeywords, ", ")
+        result += fmt.Sprintf("   间隔: %d秒\n   关键词: %s\n   排除关键词: %s\n   组名: %s\n   部分匹配: %s\n   匹配范围: %s\n",
+            rss.Interval,
+            keywords,
+            excludeKeywords,
+            rss.Group,
+            b.getPartMatchStatus(rss.AllowPartMatch),
+            b.getMatchScopeStatus(rss.MatchScope))
     }
-    return list
+    return result
 }
-
 func (b *Bot) getStats() string {
     dailyCount, weeklyCount, totalCount := b.stats.GetMessageCounts()
     return fmt.Sprintf("推送统计:\n📊 今日推送: %s\n📈 本周推送: %s\n📋 总计推送: %s", 
@@ -952,6 +1000,32 @@ func (b *Bot) getPartMatchStatus(allowPartMatch bool) string {
         return "允许"
     }
     return "禁用"
+}
+
+func parseMatchScopeOption(option string) (string, bool) {
+    switch strings.TrimSpace(option) {
+    case "1":
+        return config.MatchScopeTitle, true
+    case "2":
+        return config.MatchScopeContent, true
+    case "3":
+        return config.MatchScopeAll, true
+    default:
+        return "", false
+    }
+}
+
+func (b *Bot) getMatchScopeStatus(matchScope string) string {
+    switch strings.ToLower(strings.TrimSpace(matchScope)) {
+    case config.MatchScopeTitle:
+        return "只匹配标题"
+    case config.MatchScopeContent:
+        return "只匹配内容"
+    case config.MatchScopeAll, "":
+        return "匹配标题和内容"
+    default:
+        return matchScope
+    }
 }
 
 func (b *Bot) handleUsers(chatID int64, userID int64) {

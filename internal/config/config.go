@@ -12,6 +12,12 @@ import (
     "gopkg.in/yaml.v2"
 )
 
+const (
+    MatchScopeTitle   = "title"
+    MatchScopeContent = "content"
+    MatchScopeAll     = "all"
+)
+
 // Config 定义了整个应用的配置结构
 type Config struct {
     Telegram struct {
@@ -28,9 +34,11 @@ type RSSEntry struct {
     URLs           []string `yaml:"urls,omitempty"`     // 新版本：支持多个URL
     URL            string   `yaml:"url,omitempty"`      // 旧版本：单个URL
     Interval       int      `yaml:"interval"`           // 更新间隔（秒）
-    Keywords       []string `yaml:"keywords"`           // 关键词列表
-    Group          string   `yaml:"group"`              // 分组名称
-    AllowPartMatch bool     `yaml:"allow_part_match"`   // 是否允许部分匹配
+    Keywords        []string `yaml:"keywords"`         // 关键词列表
+    ExcludeKeywords []string `yaml:"exclude_keywords"` // Keywords that suppress matched items
+    Group           string   `yaml:"group"`            // 分组名称
+    AllowPartMatch  bool     `yaml:"allow_part_match"` // 是否允许部分匹配
+    MatchScope      string   `yaml:"match_scope"`      // Keyword matching scope: title, content, all
 }
 
 // UnmarshalYAML 实现自定义的YAML解析逻辑，支持新旧两种格式
@@ -40,9 +48,11 @@ func (r *RSSEntry) UnmarshalYAML(unmarshal func(interface{}) error) error {
         URLs           []string `yaml:"urls,omitempty"`
         URL            string   `yaml:"url,omitempty"`
         Interval       int      `yaml:"interval"`
-        Keywords       []string `yaml:"keywords"`
-        Group          string   `yaml:"group"`
-        AllowPartMatch *bool    `yaml:"allow_part_match,omitempty"`  // 使用指针类型
+        Keywords        []string `yaml:"keywords"`
+        ExcludeKeywords []string `yaml:"exclude_keywords,omitempty"`
+        Group           string   `yaml:"group"`
+        AllowPartMatch  *bool    `yaml:"allow_part_match,omitempty"`  // 使用指针类型
+        MatchScope      string   `yaml:"match_scope,omitempty"`
     }
 
     // 解析配置到临时结构体
@@ -56,6 +66,7 @@ func (r *RSSEntry) UnmarshalYAML(unmarshal func(interface{}) error) error {
     r.URL = temp.URL
     r.Interval = temp.Interval
     r.Keywords = temp.Keywords
+    r.ExcludeKeywords = temp.ExcludeKeywords
     r.Group = temp.Group
 
     // 如果存在旧版本的单个URL，将其转换为URLs数组
@@ -73,6 +84,8 @@ func (r *RSSEntry) UnmarshalYAML(unmarshal func(interface{}) error) error {
         r.AllowPartMatch = *temp.AllowPartMatch
     }
 
+    r.MatchScope = normalizeMatchScope(temp.MatchScope)
+
     return nil
 }
 
@@ -82,15 +95,19 @@ func (r RSSEntry) MarshalYAML() (interface{}, error) {
     return struct {
         URLs           []string `yaml:"urls"`
         Interval       int      `yaml:"interval"`
-        Keywords       []string `yaml:"keywords"`
-        Group          string   `yaml:"group"`
-        AllowPartMatch bool     `yaml:"allow_part_match"`
+        Keywords        []string `yaml:"keywords"`
+        ExcludeKeywords []string `yaml:"exclude_keywords"`
+        Group           string   `yaml:"group"`
+        AllowPartMatch  bool     `yaml:"allow_part_match"`
+        MatchScope      string   `yaml:"match_scope"`
     }{
-        URLs:           r.URLs,
-        Interval:       r.Interval,
-        Keywords:       r.Keywords,
-        Group:          r.Group,
-        AllowPartMatch: r.AllowPartMatch,
+        URLs:            r.URLs,
+        Interval:        r.Interval,
+        Keywords:        r.Keywords,
+        ExcludeKeywords: r.ExcludeKeywords,
+        Group:           r.Group,
+        AllowPartMatch:  r.AllowPartMatch,
+        MatchScope:      normalizeMatchScope(r.MatchScope),
     }, nil
 }
 
@@ -113,7 +130,10 @@ func (c *Config) Equal(other *Config) bool {
         }
         if c.RSS[i].Interval != other.RSS[i].Interval ||
            c.RSS[i].Group != other.RSS[i].Group ||
-           !stringSliceEqual(c.RSS[i].Keywords, other.RSS[i].Keywords) {
+           c.RSS[i].AllowPartMatch != other.RSS[i].AllowPartMatch ||
+           normalizeMatchScope(c.RSS[i].MatchScope) != normalizeMatchScope(other.RSS[i].MatchScope) ||
+           !stringSliceEqual(c.RSS[i].Keywords, other.RSS[i].Keywords) ||
+           !stringSliceEqual(c.RSS[i].ExcludeKeywords, other.RSS[i].ExcludeKeywords) {
             return false
         }
     }
@@ -191,14 +211,19 @@ func Load(path string) (*Config, error) {
             urlGroups := strings.Split(rssURLs, ";") // 使用分号分隔不同的RSS组
             for i, urlGroup := range urlGroups {
                 entry := RSSEntry{
-                    URLs:     strings.Split(strings.TrimSpace(urlGroup), ","),
-                    Interval: 300, // 默认5分钟
-                    Group:    "默认分组",
+                    URLs:       strings.Split(strings.TrimSpace(urlGroup), ","),
+                    Interval:   300, // 默认5分钟
+                    Group:      "默认分组",
+                    MatchScope: MatchScopeAll,
                 }
                 
                 // 尝试加载对应的关键词
                 if keywords := os.Getenv(fmt.Sprintf("RSS_KEYWORDS_%d", i)); keywords != "" {
                     entry.Keywords = strings.Split(keywords, ",")
+                }
+
+                if excludeKeywords := os.Getenv(fmt.Sprintf("RSS_EXCLUDE_KEYWORDS_%d", i)); excludeKeywords != "" {
+                    entry.ExcludeKeywords = strings.Split(excludeKeywords, ",")
                 }
                 
                 // 尝试加载对应的间隔时间
@@ -211,6 +236,10 @@ func Load(path string) (*Config, error) {
                 // 尝试加载对应的分组
                 if group := os.Getenv(fmt.Sprintf("RSS_GROUP_%d", i)); group != "" {
                     entry.Group = group
+                }
+
+                if matchScope := os.Getenv(fmt.Sprintf("RSS_MATCH_SCOPE_%d", i)); matchScope != "" {
+                    entry.MatchScope = normalizeMatchScope(matchScope)
                 }
 
                 config.RSS = append(config.RSS, entry)
@@ -284,6 +313,21 @@ func validateAndCleanConfig(config *Config) error {
             }
         }
         config.RSS[i].Keywords = cleanKeywords
+
+        cleanExcludeKeywords := make([]string, 0)
+        for _, keyword := range config.RSS[i].ExcludeKeywords {
+            keyword = strings.TrimSpace(keyword)
+            if keyword != "" {
+                cleanExcludeKeywords = append(cleanExcludeKeywords, keyword)
+            }
+        }
+        config.RSS[i].ExcludeKeywords = cleanExcludeKeywords
+
+        matchScope := normalizeMatchScope(config.RSS[i].MatchScope)
+        if !isValidMatchScope(matchScope) {
+            return fmt.Errorf("RSS #%d: match_scope must be one of title, content, all", i+1)
+        }
+        config.RSS[i].MatchScope = matchScope
     }
 
     return nil
@@ -308,14 +352,19 @@ func LoadFromEnv() *Config {
 
         for i, urlGroup := range urlGroups {
             config.RSS[i] = RSSEntry{
-                URLs:     strings.Split(strings.TrimSpace(urlGroup), ","),
-                Interval: 300, // 默认5分钟
-                Group:    "默认分组",
+                URLs:       strings.Split(strings.TrimSpace(urlGroup), ","),
+                Interval:   300, // 默认5分钟
+                Group:      "默认分组",
+                MatchScope: MatchScopeAll,
             }
             
             // 尝试加载对应的关键词
             if keywords := os.Getenv(fmt.Sprintf("RSS_KEYWORDS_%d", i)); keywords != "" {
                 config.RSS[i].Keywords = strings.Split(keywords, ",")
+            }
+
+            if excludeKeywords := os.Getenv(fmt.Sprintf("RSS_EXCLUDE_KEYWORDS_%d", i)); excludeKeywords != "" {
+                config.RSS[i].ExcludeKeywords = strings.Split(excludeKeywords, ",")
             }
             
             // 尝试加载对应的间隔时间
@@ -329,10 +378,32 @@ func LoadFromEnv() *Config {
             if group := os.Getenv(fmt.Sprintf("RSS_GROUP_%d", i)); group != "" {
                 config.RSS[i].Group = group
             }
+
+            if matchScope := os.Getenv(fmt.Sprintf("RSS_MATCH_SCOPE_%d", i)); matchScope != "" {
+                config.RSS[i].MatchScope = normalizeMatchScope(matchScope)
+            }
         }
     }
 
     return config
+}
+
+func normalizeMatchScope(scope string) string {
+    scope = strings.ToLower(strings.TrimSpace(scope))
+    switch scope {
+    case "", MatchScopeAll:
+        return MatchScopeAll
+    case MatchScopeTitle:
+        return MatchScopeTitle
+    case MatchScopeContent, "description", "desc":
+        return MatchScopeContent
+    default:
+        return scope
+    }
+}
+
+func isValidMatchScope(scope string) bool {
+    return scope == MatchScopeTitle || scope == MatchScopeContent || scope == MatchScopeAll
 }
 
 func (c *Config) Save(filename string) error {

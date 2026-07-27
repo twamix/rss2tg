@@ -110,8 +110,12 @@ rss:
     keywords:
       - "keyword1"
       - "keyword2"
+    exclude_keywords:
+      - "exclude1"
+      - "exclude2"
     group: "Group1"
     allow_part_match: true # 是否允许部分关键词匹配
+    match_scope: title # 关键词匹配范围：title=标题，content=内容，all=标题和内容
 ```
 
 ### 2.2 配置项说明
@@ -127,8 +131,10 @@ rss:
 | rss[].urls             | 字符串数组 | 是   | RSS 订阅地址列表          | ["https://example.com/feed1.xml"]              |
 | rss[].interval         | 整数       | 是   | 更新间隔（秒）            | 300                                            |
 | rss[].keywords         | 字符串数组 | 否   | 关键词列表                | ["vps", "优惠"]                                |
+| rss[].exclude_keywords | 字符串数组 | 否   | 排除关键词列表，命中后不推送 | ["广告", "推广"]                              |
 | rss[].group            | 字符串     | 否   | 分组名称                  | "科技新闻"                                     |
 | rss[].allow_part_match | 布尔值     | 否   | 是否允许部分匹配          | true                                           |
+| rss[].match_scope      | 字符串     | 否   | 关键词匹配范围：title/content/all | "title"                                  |
 
 #### 2.2.2 环境变量说明
 
@@ -140,6 +146,7 @@ rss:
 | TELEGRAM_ADMIN_USERS | 否   | 管理员用户 ID，多个用逗号分隔                                                                               | 123456789,987654321                                                                               |
 | RSS_URLS             | 否   | RSS 订阅地址，多个组用分号分隔，组内多个地址用逗号分隔。<br>每组可以包含多个 RSS 源，组与组之间用分号隔开。 | https://example1.com/feed.xml,<br>https://example2.com/feed.xml;<br>https://example3.com/feed.xml |
 | RSS_KEYWORDS_0       | 否   | 第一组 RSS 的关键词，多个用逗号分隔。<br>数字代表组的索引，从 0 开始。                                      | vps,优惠,免费                                                                                     |
+| RSS_EXCLUDE_KEYWORDS_0 | 否 | 第一组 RSS 的排除关键词，多个用逗号分隔。命中后该文章不会被推送。                                      | 广告,推广,置顶                                                                                     |
 | RSS_INTERVAL_0       | 否   | 第一组 RSS 的更新间隔（秒）。<br>数字代表组的索引，从 0 开始。                                              | 300                                                                                               |
 | RSS_GROUP_0          | 否   | 第一组 RSS 的分组名称。<br>数字代表组的索引，从 0 开始。                                                    | 科技新闻                                                                                          |
 | TZ                   | 否   | 时区设置，用于确保日志和统计数据使用正确的时区                                                              | Asia/Shanghai                                                                                     |
@@ -160,8 +167,10 @@ rss:
 
    - 如果配置了关键词，只有匹配关键词的文章才会被推送
    - 如果没有配置任何关键词，该订阅源的所有新文章都会被推送
+   - 如果配置了排除关键词，文章命中排除关键词时不会被推送
    - 关键词匹配支持完整匹配和部分匹配两种模式
    - 可以通过 `allow_part_match` 配置是否允许部分匹配
+   - 可以通过 `match_scope` 选择关键词匹配范围：`title` 只匹配标题，`content` 只匹配内容，`all` 同时匹配标题和内容
 
 4. **安全建议**
    - 不要在公开环境中暴露 bot_token
@@ -460,8 +469,12 @@ rss:
     keywords:
       - "keyword1"
       - "keyword2"
+    exclude_keywords:
+      - "exclude1"
+      - "exclude2"
     group: "Group1"
     allow_part_match: true # 是否允许部分关键词匹配
+    match_scope: title # Keyword matching scope: title, content, all
 ```
 
 ### 2.2 How to use Bot and commands

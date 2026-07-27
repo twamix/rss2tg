@@ -25,8 +25,10 @@ type Feed struct {
     URLs            []string
     Interval        time.Duration
     Keywords        []string
+    ExcludeKeywords []string
     Group           string
     AllowPartMatch  bool      // 是否允许部分匹配
+    MatchScope      string
     ticker          *time.Ticker
     stopChan        chan struct{}
 }
@@ -35,8 +37,10 @@ type Config struct {
     URLs            []string
     Interval        int
     Keywords        []string
+    ExcludeKeywords []string
     Group           string
     AllowPartMatch  bool      // 是否允许部分匹配
+    MatchScope      string
 }
 
 func NewManager(configs []Config, db *storage.Storage) *Manager {
@@ -68,10 +72,12 @@ func (m *Manager) UpdateFeeds(configs []Config) {
         m.feeds[i] = &Feed{
             URLs:           config.URLs,
             Interval:       time.Duration(config.Interval) * time.Second,
-            Keywords:       config.Keywords,
-            Group:          config.Group,
-            AllowPartMatch: config.AllowPartMatch,  // 添加部分匹配配置
-            stopChan:       make(chan struct{}),
+            Keywords:        config.Keywords,
+            ExcludeKeywords: config.ExcludeKeywords,
+            Group:           config.Group,
+            AllowPartMatch:  config.AllowPartMatch,  // 添加部分匹配配置
+            MatchScope:      normalizeMatchScope(config.MatchScope),
+            stopChan:        make(chan struct{}),
         }
     }
 
@@ -209,6 +215,37 @@ func contains(slice []string, str string) bool {
     return false
 }
 
+func normalizeMatchScope(scope string) string {
+    scope = strings.ToLower(strings.TrimSpace(scope))
+    switch scope {
+    case "title", "content", "all":
+        return scope
+    default:
+        return "all"
+    }
+}
+
+func matchText(text, keyword string, allowPartMatch bool) bool {
+    if isWordMatch(text, keyword) {
+        return true
+    }
+    return allowPartMatch && strings.Contains(text, keyword)
+}
+
+func matchKeywordList(text string, keywords []string, allowPartMatch bool) []string {
+    matched := make([]string, 0)
+    for _, keyword := range keywords {
+        normalizedKeyword := normalizeText(keyword)
+        if normalizedKeyword == "" {
+            continue
+        }
+        if matchText(text, normalizedKeyword, allowPartMatch) && !contains(matched, keyword) {
+            matched = append(matched, keyword)
+        }
+    }
+    return matched
+}
+
 func (m *Manager) matchKeywords(item *gofeed.Item, feed *Feed) []string {
     if m.db.WasSent(item.Link) {
         return nil
@@ -221,7 +258,15 @@ func (m *Manager) matchKeywords(item *gofeed.Item, feed *Feed) []string {
 
     // 标准化文本
     normalizedTitle := normalizeText(item.Title)
-    normalizedDesc := normalizeText(item.Description)
+    normalizedContent := normalizeText(strings.Join([]string{item.Description, item.Content}, " "))
+    matchScope := normalizeMatchScope(feed.MatchScope)
+
+    fullText := strings.Join([]string{normalizedTitle, normalizedContent}, " ")
+    excludedKeywords := matchKeywordList(fullText, feed.ExcludeKeywords, feed.AllowPartMatch)
+    if len(excludedKeywords) > 0 {
+        log.Printf("跳过文章: %s, 命中排除关键词: %v", item.Title, excludedKeywords)
+        return nil
+    }
     
     var matched []string
     
@@ -230,32 +275,14 @@ func (m *Manager) matchKeywords(item *gofeed.Item, feed *Feed) []string {
         // 标准化关键词
         normalizedKeyword := normalizeText(keyword)
         
-        // 首先尝试完整词匹配
-        if isWordMatch(normalizedTitle, normalizedKeyword) {
+        titleMatched := (matchScope == "title" || matchScope == "all") && matchText(normalizedTitle, normalizedKeyword, feed.AllowPartMatch)
+        contentMatched := (matchScope == "content" || matchScope == "all") && matchText(normalizedContent, normalizedKeyword, feed.AllowPartMatch)
+
+        if titleMatched || contentMatched {
             if !contains(matched, keyword) {
                 matched = append(matched, keyword)
             }
             continue
-        }
-        
-        if isWordMatch(normalizedDesc, normalizedKeyword) {
-            if !contains(matched, keyword) {
-                matched = append(matched, keyword)
-            }
-            continue
-        }
-        
-        // 如果允许部分匹配且没有找到完整匹配，尝试部分匹配
-        if feed.AllowPartMatch {
-            if strings.Contains(normalizedTitle, normalizedKeyword) {
-                if !contains(matched, keyword) {
-                    matched = append(matched, keyword)
-                }
-            } else if strings.Contains(normalizedDesc, normalizedKeyword) {
-                if !contains(matched, keyword) {
-                    matched = append(matched, keyword)
-                }
-            }
         }
     }
 

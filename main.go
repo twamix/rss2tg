@@ -31,8 +31,10 @@ func NewApp(cfg *config.Config, db *storage.Storage, stats *stats.Stats) (*App, 
             URLs:           rssCfg.URLs,
             Interval:       rssCfg.Interval,
             Keywords:       rssCfg.Keywords,
+            ExcludeKeywords: rssCfg.ExcludeKeywords,
             Group:          rssCfg.Group,
             AllowPartMatch: rssCfg.AllowPartMatch,
+            MatchScope:     rssCfg.MatchScope,
         }
     }
 
@@ -63,8 +65,10 @@ func (app *App) updateRSS() {
             URLs:           rssCfg.URLs,
             Interval:       rssCfg.Interval,
             Keywords:       rssCfg.Keywords,
+            ExcludeKeywords: rssCfg.ExcludeKeywords,
             Group:          rssCfg.Group,
             AllowPartMatch: rssCfg.AllowPartMatch,
+            MatchScope:     rssCfg.MatchScope,
         }
     }
     app.rssManager.UpdateFeeds(rssConfigs)

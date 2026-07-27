@@ -11,10 +11,14 @@ rss:
     keywords:
       - 便宜
       - 手机
+    exclude_keywords: []
     group: NS论坛
+    match_scope: title
   - url: https://linux.do/latest.rss
     interval: 30
     keywords:
       - api
       - 免费
+    exclude_keywords: []
     group: DO论坛
+    match_scope: title
